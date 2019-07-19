@@ -1,0 +1,539 @@
+cara konfigurasi openvpn server
+
+1. installasi package yang diperlukan
+
+	apt-get install openvpn easy-rsa
+
+2. copy file easy-rsa ke directory openvpn kita
+
+	cp -r /usr/share/easy-rsa /etc/openvpn				# -r itu artinya recursive, agar file dalam folder easy-rsa juga ikut dipindahkan
+
+3. copy file konfigurasi server.conf ke directory openvpn
+
+	cp /usr/share/doc/openvpn/examples/sample-config-files/server.conf.gz /etc/openvpn
+
+	gunzip /etc/openvpn/server.conf.gz				# gunzip merupakan perintah untuk mengekstrak ekstensi .gz
+
+4. membuat certificate authority untuk server vpn menggunakan easy-rsa
+
+	cd /etc/openvpn/easy-rsa
+
+	nano vars
+
+	# ubah sesuaikan dengan kebutuhan, contohnya seperti dibawah, jika sudah lalu disave
+
+	export KEY_COUNTRY="ID"
+	export KEY_PROVINCE="Bali"
+	export KEY_CITY="Denpasar"
+	export KEY_ORG="itnsaskills"
+	export KEY_EMAIL="root@linuxsec.id"
+	export KEY_OU="lksn 2019 ca"
+
+	# jalankan perintah berikut satu persatu
+
+	. ./vars						# perintah ini untuk mengatur vars yang tdi kita rubah
+
+	./clean-all						# perintah ini untuk membersihkan folder keys
+
+	./build-dh 2048						# perintah ini untuk membuat file dh dengan 2048 bit
+
+	./build-ca						# perintah ini untuk membuat CA
+
+	./build-key-server server				# perintah ini untuk membuat CA untuk server, nama "server" bisa diubah ubah kok
+
+	openssl --genkey --secret /etc/openvpn/ta.key		# perintah ini untuk membuat key/secret dari openvpn
+
+	# pindahkan certifikat ke folder /etc/openvpn
+
+	cd /etc/openvpn/easy-rsa/keys
+	
+	cp ca.crt ca.key server.crt server.key /etc/openvpn
+
+4. konfigurasi server.conf (file konfigurasi utama dari openvpn)
+
+	nano /etc/openvpn/server.conf
+
+	# sesuaikan konfigurasinya seperti dibawah ini
+
+	port 1194						# bisa diubah ubah bos
+	proto udp						# bisa juga diubah jadi tcp
+	dev tun							# bisa juga diubah jadi tap
+	sndbuf 0						
+	rcvbuf 0
+	ca ca.crt						# file ca yang kita buat tadi
+	cert server.crt						# crt server yang kita buat tadi
+	key server.key						# key server yang kita buat tadi
+	dh dh2048.pem						# file dh yang kita buat tadi
+	auth SHA512						# disini authentikasinya dengan SHA512
+	tls-auth ta.key 0					# ini diisi dengan file ta.key yang kita buat tadi (ini penting!)
+	topology subnet
+	server 10.2.4.0 255.255.255.0				# ini adalah subnet dari vpn server kita, bisa diubah bos jadi sesuaiin aja dengan kebutuhan
+	ifconfig-pool-persist ipp.txt				# ini adalah file yang akan menunjukan ip dari client yang terhubung dengan vpn server kita
+	push "redirect-gateway def1 bypass-dhcp"		
+	push "dhcp-option DNS 10.1.1.10"			# ini isi dengan dns server yang akan diberikan ke client vpn
+	keepalive 10 120					
+	cipher AES-256-CBC					# authentikasi di enkripsi (sandi) dengan menggunakan algoritma aes (kayaknya :v)				
+	user nobody
+	group nogroup
+	persist-key
+	persist-tun
+	status openvpn-status.log
+	verb 3
+
+5. restart vpn server
+
+	service openvpn restart
+
+	systemctl enable openvpn@server
+
+	systemctl start openvpn@server				# pastikan tidak ada error yang muncul, jika ada bisa lihat cek dengan perintah "journalctl -xe"
+
+	# test dengan perintah "ifconfig" atau "ip a", jika muncul interface "tun0" maka konfigurasi sudah benar
+
+
+6. menngatur NAT
+
+	# nat disini digunakan agar interface keluaran dari client vpn ada di interface gateway dari vpn server
+	# ini sangat penting, dimana agar client dapat terbuhung ke jaringan internet atau jaringan local dari vpn server
+	
+	# menggunakan MASQUARADE
+
+	iptables -t nat -A POSTROUTING -o ens192 -j MASQUARADE				# sesuaikan -o nya dengan interface keluaran dari vpn server untuk client
+
+	# menggunakan SNAT
+	
+	iptables -t nat -A POSTROUTING -s 10.2.4.0/24 -j SNAT --to 172.17.1.254		# sesuaikan -s dengan subnet untuk vpn client, dan --to dengan ip dari
+											# vpn server atau ip gateway atau ip public :v (sama aja hehe)
+
+7. membuat sertifikat untuk client vpn
+
+	cd /etc/openvpn/easy-rsa
+
+	# jalankan ini untuk membuat certificate tanpa password
+
+	./build-key client					# nama "client" ini bisa diubah ubah ya, kalau bisa berbeda untuk setiap client
+
+	# jalankan ini untuk membuat certificate dengan password
+
+	./build-key-pass client					# nama "client" ini bisa diubah ubah ya, kalau bisa berbeda untuk setiap client
+
+	# buat folder untuk tempat menampung file konfigurasi client
+
+	mkdir /root/client					# sebenarnya bisa dibuat dimana aja hehe
+
+	# pindahkan cert client ke foldernya
+
+	cd /etc/openvpn/easy-rsa/keys
+
+	cp client.crt client.key /root/client			
+
+	cd /etc/openvpn
+
+	cp ca.crt ta.key /root/client				# disini client juga membutuhkan ca.crt dan ta.key yang sama dengan server ya, untuk authnya
+
+8. membuat file konfigurasi dari client	
+
+	nano /root/client.ovpn
+	
+	# buat konfigurasi seperti ini
+
+	client
+	dev tun							# sesuaikan dengan dev yang di server
+	proto udp						# sesuaikan dengan protocol yang di server
+	sndbuf 0
+	rcvbuf 0
+	remote 172.17.1.254 1194				# isiikan ip address public dari server (gateway) dan juga port yang digunakan server
+	resolv-retry infinite
+	ca ca.crt	
+	cert client.crt
+	key client.key
+	tls-auth ta.key 1					# metric 1 digunakan untuk client, sedangkan 0 untuk server ya
+	nobind
+	persist-key
+	persist-tun
+	remote-cert-tls server
+	auth SHA512						# sesuaikan dengan auth yang digunakan oleh server
+	cipher AES-256-CBC					# sesuaikan dengan cipher yang digunakan oleh server
+	setenv opt block-outside-dns
+	key-direction 1
+	verb 3
+	
+	# sebenarnya bisa juga file ca.crt,client.crt,client.key,ta.key dijadikan satu degan file client.ovpn, jadinya akan seperti ini
+
+	client
+	dev tun
+	proto udp
+	sndbuf 0
+	rcvbuf 0
+	remote 172.17.1.254 1194
+	resolv-retry infinite
+	nobind
+	persist-key
+	persist-tun
+	remote-cert-tls server
+	auth SHA512
+	cipher AES-256-CBC
+	setenv opt block-outside-dns
+	key-direction 1
+	verb 3
+	<ca>
+	-----BEGIN CERTIFICATE-----
+	MIIDKzCCAhOgAwIBAgIJAIMJ5KJAQtdrMA0GCSqGSIb3DQEBCwUAMBMxETAPBgNV
+	BAMMCENoYW5nZU1lMB4XDTE5MDYwOTA4NDAxNVoXDTI5MDYwNjA4NDAxNVowEzER
+	MA8GA1UEAwwIQ2hhbmdlTWUwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIB
+	AQDuAsjQyNHr9j4KnY0BvOZSaWvdlRIY6GdDnn7kLKmEfyUV6r9P69YpY51HT4yh
+	3rkMr7csr6PRT3EpK80pRbO1XqwEb4X0exBLJUH564UN4vvFsDSHtRk4VUyPnZ5F
+	I5BJWjZDrIOQKS/fm3W8GeXU0kjxy0/2d5ZEHMUHk08SOleCqzo+4sY0IjumpB3o
+	FNNQ2pvUKUWAJ8Nq3Jsf8ZDOiYJVdxjwsMzHJFBHVAnQkURMpEEjRvP3IRCPTiiZ
+	iPNMcCL5CgUcvWG1itdJLaJPth56iHALy80/l+t3KeOp+NmmJkPqUSVDlUNnPXQd
+	rL4AKygj0aJzMkCm9K3nKKp7AgMBAAGjgYEwfzAdBgNVHQ4EFgQUabqWdUMejP/z
+	DsShXjXnOp6wKlwwQwYDVR0jBDwwOoAUabqWdUMejP/zDsShXjXnOp6wKlyhF6QV
+	MBMxETAPBgNVBAMMCENoYW5nZU1lggkAgwnkokBC12swDAYDVR0TBAUwAwEB/zAL
+	BgNVHQ8EBAMCAQYwDQYJKoZIhvcNAQELBQADggEBAFnfQYau58DL3td4nbWmlzU0
+	YiTWZG9ulXiaigTrQkkH+iqAplGrU6Y9jIjN48PRc5JIbc1wmu9aLmGsYJVk/QvD
+	MJLxKFoWjxLHArOgu4GLzfUyCYTS63ispNGLX/Q8ItQtzGsHrKOCbpKktslkGEEx
+	6WLY+buygAjtF2LSPfb8W6Nn3CE5DMNgCqahbHqa4rgicX0BwoOlTI9OufkaqP5P
+	x5UiQ4mdDpWQ7SUE0G6nH6feTik2hvgyn+falJrwdWMHJyK93syD0Ofem3d2AAVM
+	Li/L26E17sXietz9y07Jh0lpEJyBchzkZ3G8MSdDq4mXUIG/WArWF3MVB+DnvPs=
+	-----END CERTIFICATE-----
+	</ca>
+	<cert>
+	-----BEGIN CERTIFICATE-----
+	MIIDQzCCAiugAwIBAgIQPSS1k2pZhK78KX39wSC/hTANBgkqhkiG9w0BAQsFADAT
+	MREwDwYDVQQDDAhDaGFuZ2VNZTAeFw0xOTA2MDkwODQwMTVaFw0yOTA2MDYwODQw
+	MTVaMBExDzANBgNVBAMMBmNsaWVudDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCC
+	AQoCggEBAMme0U9N39lM4zEBI4cJ71tE82ew2aWHF68xxPuPNqnO52+qWxuiYJ8c
+	6px3Zz5aUFpOWlN6cRL8JDoAZv8unjXR4OmgEdNe5B7RGkAehVSbRhfEcvvhZvjs
+	kpLYsLY84Rffg4dMqT6WAvJX+xpCtjqxvU6QC17kxnt4jEyH5o+UTvDTH6Nv4PM9
+	5CAp7Iskmpq/E0ThUH7jpeB4U9ppRtNhl/n96i4ggcmTT/gN+AfM6CTwmmqzoF5J
+	MmBqfwZVNOg7EtBKViIOWHGcnbp+vcxVgK0V/D0ctpUzRF0rPPa+XyQVYft7wmLQ
+	iBzVJqLl4EmvLEvNTt3wfjLJtGwIPxECAwEAAaOBlDCBkTAJBgNVHRMEAjAAMB0G
+	A1UdDgQWBBTFyGm/dfkIxlisALIQhYWLzgZELDBDBgNVHSMEPDA6gBRpupZ1Qx6M
+	//MOxKFeNec6nrAqXKEXpBUwEzERMA8GA1UEAwwIQ2hhbmdlTWWCCQCDCeSiQELX
+	azATBgNVHSUEDDAKBggrBgEFBQcDAjALBgNVHQ8EBAMCB4AwDQYJKoZIhvcNAQEL
+	BQADggEBAKdaixIvZYonI7Yltw1koFj+IlNA/77PB+94qkYU0vBKnS7yxZ9Iseep
+	U/fH2vPUjaAaejOGbGrrtoUCeLui5yiTDetzFRu7IlSFtDdQu7ErRjI5HzcwIKLS
+	/MzTHT/dhFYIQrFD8ZYco72quF1NKKSksuBZW5c0RRsSCNpwujXA8wEbS3BCflN/
+	HZpzSCcTw/jevrfm6DW9yW8Q07sAA3J9qz4jVnfAZqKhPEI9wEEiHebW7k6jmW4Y
+	1sTN8Eo+wxD6vrdgsnevSZfH7WJNQ4NF2wTXZaEXs61EYSxarqjHlkceDCC84y4e
+	fANwaRubw4S/DnkBTrZu/feFEJlUr2U=
+	-----END CERTIFICATE-----
+	</cert>
+	<key>
+	-----BEGIN PRIVATE KEY-----
+	MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDJntFPTd/ZTOMx
+	ASOHCe9bRPNnsNmlhxevMcT7jzapzudvqlsbomCfHOqcd2c+WlBaTlpTenES/CQ6
+	AGb/Lp410eDpoBHTXuQe0RpAHoVUm0YXxHL74Wb47JKS2LC2POEX34OHTKk+lgLy
+	V/saQrY6sb1OkAte5MZ7eIxMh+aPlE7w0x+jb+DzPeQgKeyLJJqavxNE4VB+46Xg
+	eFPaaUbTYZf5/eouIIHJk0/4DfgHzOgk8Jpqs6BeSTJgan8GVTToOxLQSlYiDlhx
+	nJ26fr3MVYCtFfw9HLaVM0RdKzz2vl8kFWH7e8Ji0Igc1Sai5eBJryxLzU7d8H4y
+	ybRsCD8RAgMBAAECggEAQdXyUwsCxVot9ZqBl17PIeZp9Lny1/I88aA2yk4Bc4F0
+	YSonheaH1m0CzwTOWbXz9wkOxaN9uM1MpwPqnfkDAGAAKUlziKm7o7Rz9ewBbZcm
+	VCx5v3XiwfW+BuVrDpbiiYEa2dtWiHFDlQ7Vl8Wg65mOT1EJ5XqetUKvzW2zA769
+	iN+l8oQBL7OaN+hDxsJrpnKkfuG+geegcAjOuBrYMmg3jqcmR11OO1zFFANSMe6e
+	h45QtMQaT/bxMh/eGOOfEmIx5PHktd0nxrGqBpQ61YbXZ2Uw6auVacBl9gUfe4Vr
+	MefW77WFVgVNkI7tuijekSULaABz5BoU45hFum7CgQKBgQDj5h1mcyaRXdvkU4FR
+	PtkC1fOzUgv5d5Pt61OEFLMr48D0b849K5LIFJhJwl1LO5G1nYGDXbFNMWyl4YFz
+	0idmL5ejCDCdCOSSuepfAcbZQMgsJQCzO7YiJwc3HzFAQChlvinX4/tW2RjCcSrt
+	zWr4vvCCN2SiHFovpwWNq5cWnQKBgQDiezExE3UAfX75P/LTlPQwZr2ng77hp9L+
+	A8VppgQAjjLxKrEyJdMKqXXmI/sOWZJgGsFjxB+GU5r6039KpP1iH+Jzz7YUHN+J
+	YULXK5SP7KshQcigAuDNBYBeINi2joYy7Cb1qkDo9aMOz8k/5xsZYMjZlS0aLv9f
+	5UfR7aemBQKBgFz3C9s08fCupvqXDdOEnaXIfScTOwtCujd9nY3tm8E1oQqVaT4O
+	vkucCxtbjA8ad6/sVl6uI5tno/hu6w3CFoxasbKxrpMAg61O5cpnwSPyhzVqysRS
+	gVOhNBJKSR76jQAj+JG20Fp3KOB4pZhoCVD7IsUbr5NpmWiC64MFEhcJAoGBAKWe
+	OtHNjbEHFLRGnFc3RP6kEyqNwCeaJ0QUE+f3PFP/qKcNdjjayiKw24Opai0LOWxI
+	BIXlZLxBJUMpKJu4XYbFFD9mdJruplT7J/rbZq98/YO7bG/+ys+Cp2WuFWwie2Z/
+	pNnfX8o73rq1HlE5umpriVT7rtjH534D1+pfJUrVAoGBAIxfxXgD0MuKvQJNfVgF
+	HHam4YpEuAv4veZKu4ZOv31oZUv9cKAXjSfYOQlE3dMQvgdHkVzE6WEHTeqHGVCj
+	+WMLBi7ARXP+V8Rs0HdqUWbROihUKQn5X3KitddOOR3RagIiE7beeuPukW/wo3cJ
+	ST6Z2bIU3LuHAQhhGnyAqf/X
+	-----END PRIVATE KEY-----
+	</key>
+	<tls-auth>
+	-----BEGIN OpenVPN Static key V1-----
+	5ff696db65447cf41a07c609830960fb
+	22e23c8209060e29d83a46d1d342bf7f
+	cc5da56ae266018f2f19011b8afd40bf
+	4a7a6a33e91174173309dc9510f8a6d0
+	d45591443c666820900a0ffd70709669
+	cc9aa8259866e17dbb51da1a6023caa8
+	94810a7464327280728bf69d5772b341
+	3e71e6ee8f233de8ab2993f6acfeea7b
+	d1fc6f16b54ada4d4e170ee87dd6ad56
+	00d82a8f0785f042badc947d31413dc4
+	29d5f250ac03e7bbd04beae472ddc1da
+	ca156588b0e6f7eae492e76f0745f79e
+	9936c03edccd7b4bb759002425f1a1b5
+	08d483ec9a47906ba03643c19d4dab6d
+	cb3c735ea5e1022117472d33e6acf376
+	0b1ca4997a74038fdd01ecfcbcfd0afa
+	-----END OpenVPN Static key V1-----
+	</tls-auth>
+
+	
+	# file contoh untuk client.ovpn ada di "/usr/share/doc/openvpn/examples/sample-config-files/client.conf"
+	
+	# TIPS !!!
+
+	# untuk menjadikan beberapa file jadi 1, juganakan perintah ini
+	# cat ca.crt client.crt client.crt ta.key >> client.ovpn
+	
+	# tanda ">>" tidak akan menghilangkan isi dari client.ovpn sebelumnya
+	# sedangkan tanda ">" akan menghilangkan isi dari client.ovpn sebelumnya
+
+9. pindahkan file client tersebut ke clientnya
+
+	# jika windows bisa pakai winscp
+
+	# jika linux bisa pakai protocol scp
+
+		buka terminal di client linux dan pindah ke super user
+		
+		mkdir /vpnclients/client
+		
+		scp root@172.17.1.254:/root/client/* /vpnclients/client
+
+		chmod 755 /vpnclients/client/*
+	
+		# lalu buka setting networknya dan import file .ovpn yang tadi dikirim
+
+
+
+
+KONFIGURASI UNTUK MEMBUAT STATIC IP PADA CLIENT
+
+1. masuk ke konfigurasi server.conf
+	
+	nano /etc/openvpn/server.conf
+
+2. tambahkan atau hilangkan tanda (;) baris berikut
+
+	client-config-dir ccd
+
+3. buat direktori bernama ccd 
+
+	mkdir /etc/openvpn/ccd
+
+4. buat file dengan nama yang sama dengan user openvpn
+
+	# misalkan user dari openvpn bernama client1.ovpn, buat seperti ini:
+
+	touch /etc/openvpn/ccd/client1
+
+5. tambahkan perintah berikut pada file client1
+
+	nano /etc/openvpn/ccd/client1
+
+	# jika kalian menggunakan topologi subnet, gunakan perintah berikut
+		# ifconfig-push [ip address yang akan diberikan ke client] [subnet mask]
+	
+	ifconfig-push 10.2.4.20 255.255.255.0
+
+	# jika tidak menggunakan topologi subnet (menggunakan topologi p2p) 
+		# ifconfig-push [ip address yang akan diberikan ke client] [ip address server vpn]
+
+	ifconfig-push 10.2.4.20 10.2.4.1
+
+6. restart vpn server
+
+	service openvpn restart
+
+
+
+KONFIGURASI UNTUK MEMBUAT DYNAMIC IP RANGE PADA CLIENT
+
+1. masuk ke konfigurasi server.conf
+	
+	nano /etc/openvpn/server.conf
+
+2. tambahkan 'nopool' pada konfigurasi ip "server [subnet vpn] [netmask]"
+
+	nano /etc/openvpn/server.conf	
+
+	server 10.2.4.0 255.255.255.0 'nopool'					# sertakan juga tanda kutip 1 tersebut
+
+3. tambahkan baris berikut untuk membuat ip range untuk client
+
+	nano /etc/openvpn/server.conf
+
+	ifconfig-pool 10.2.4.100 10.2.4.120					# ini akan membuat client mendapat rentang ip dari 100-120
+
+
+
+
+KONFIGURASI TAMBAHAN JIKA MENGGUNAKAN AUTHENTIKASI LDAP
+
+1. install package
+
+	apt-get install openvpn-auth-ldap
+
+2. copy file konfigurasi ldap ke folder openvpn
+
+	mkdir /etc/openvpn/auth
+
+	cp /usr/share/doc/openvpn-auth-ldap/examples/auth-ldap.conf /etc/openvpn/auth
+
+3. konfigurasi file ldap
+
+	nano /etc/openvpn/auth/auth-ldap.conf
+
+	# ikuti konfigurasi seperti dibawah ini
+
+	<LDAP>
+	# LDAP server URL
+		URL ldap://10.1.1.20:389						#sesuaikan dengan ip atau domain dari ldap server kalian
+		
+		# Bind DN (If your LDAP server doesn't support anonymous binds)
+		# BindDN uid=Manager,ou=People,dc=example,dc=com
+			BindDN cn=admin,dc=itnsaskills,dc=cloud					# bindDN dari ldap server kamu
+		
+		# Bind Password
+			Password Skill39							# password dari bindDN
+		
+		# Network timeout (in seconds)
+			Timeout 15
+		
+		# Enable Start TLS
+			TLSEnable no 								# ganti ke "no" jika tidak menggunakan tls
+		
+		# Follow LDAP Referrals (anonymously)
+			FollowReferrals yes
+		
+		# TLS CA Certificate File
+			TLSCACertFile /usr/local/etc/ssl/ca.pem
+		
+		# TLS CA Certificate Directory
+			TLSCACertDir /etc/ssl/certs
+		
+		# Client Certificate and key
+		# If TLS client authentication is required
+			TLSCertFile /usr/local/etc/ssl/client-cert.pem
+			TLSKeyFile /usr/local/etc/ssl/client-key.pem
+		
+		# Cipher Suite
+		# The defaults are usually fine here
+		# TLSCipherSuite ALL:!ADH:@STRENGTH
+	</LDAP>
+	
+	<Authorization>
+		# Base DN
+		#BaseDN "ou=People,dc=example,dc=com"
+			BaseDN "ou=VPN,dc=itnsaskills,dc=cloud"			# sesuaikan dengan user di ou mana yang akan diperbolehkan authentikasi
+		
+		# User Search Filter
+		#SearchFilter "(&(uid=%u)(accountStatus=active))"
+			SearchFilter "(&(cn=%u))" 				# SearchFilter disesuaikan dengan parameter yang ada di ldap server, bisa seperti 											# cn atau uid 
+		# Require Group Membership
+		RequireGroup false
+		
+		# Add non-group members to a PF table (disabled)
+		#PFTable ips_vpn_users
+			
+			#<Group>
+			#BaseDN "ou=Groups,dc=example,dc=com"
+			#SearchFilter "(|(cn=developers)(cn=artists))"
+			#MemberAttribute uniqueMember
+			# Add group members to a PF table (disabled)
+			#PFTable ips_vpn_eng
+			#</Group>
+	</Authorization>
+	
+4. tambahkan plugin pada file server.conf
+
+	nano /etc/openvpn/server.conf
+
+	# pada bagian paling bawah tambahkan seperti ini
+
+	plugin /usr/lib/openvpn/openvpn-auth-ldap.so /etc/openvpn/auth/auth-ldap.conf
+
+5. tambahan pada file konfigurasi client.conf
+
+	nano /root/client.conf
+	
+	# tambahkan baris dibawah ini
+
+	auth-user-pass						# ini berfungsi agar authentikasi openvpn membutuhkan user dan password
+
+6. restart openvpn server
+
+	service openvpn restart
+
+	systemctl enable openvpn@server
+
+	systemctl start openvpn@server
+
+
+
+KONFIGURASI TAMBAHAN JIKA MENGGUNAKAN AUTHENTIKASI RADIUS
+
+1. install package
+
+	apt-get install openvpn-auth-radius freeradius-utils
+
+2. copy file konfigurasi ldap ke folder openvpn
+
+	mkdir /etc/openvpn/radius
+
+	cp /usr/share/doc/openvpn-auth-radius/radiusplugin.cnf /etc/openvpn/radius
+
+
+3. konfigurasi file freeradius
+
+	nano /etc/openvpn/radius/radiusplugin.cnf
+
+	# edit konfigurasi dan sesuaikan seperti dibawah ini
+
+	NAS-Identifier=OpenVpn			# ini default
+	Service-Type=5				# ini default
+	Framed-Protocol=1			# ini default
+	NAS-Port-Type=5				# ini default
+	NAS-IP-Address=127.0.1.1		# ini diedit, defaultnya "127.0.0.1"
+
+		# bagaimana cara mengetahui NAS-IP-ADDRESS?
+		# gunakan perintah ini
+		
+		# radtest [nama user di radius server] [password user] [ip address radius server] [nas port (bisa berapa saja)] [secret radius server]
+
+		# radtest user1 Skill39 10.1.1.20 5 Skill39
+
+
+ 	server
+	{
+		# The UDP port for radius accounting.
+		acctport=1813
+		# The UDP port for radius authentication.
+		authport=1812
+		# The name or ip address of the radius server.
+		name=10.1.1.20									# sesuaikan dengan ip address radius server
+		# How many times should the plugin send the if there is no response?
+		retry=1
+		# How long should the plugin wait for a response?
+		wait=1
+		# The shared secret.
+		sharedsecret=Skill39								# sesuaikan dengan secret radius server
+	}
+
+4. tambahkan plugin pada file server.conf
+
+	nano /etc/openvpn/server.conf
+
+	# pada bagian paling bawah tambahkan seperti ini
+
+	plugin /usr/lib/openvpn/radiusplugin.so /etc/openvpn/radius/radiusplugin.cnf
+
+
+5. tambahan pada file konfigurasi client.conf
+
+	nano /root/client.conf
+	
+	# tambahkan baris dibawah ini
+
+	auth-user-pass							# ini berfungsi agar authentikasi openvpn membutuhkan user dan password
+
+6. restart openvpn server
+
+	service openvpn restart
+
+	systemctl enable openvpn@server
+
+	systemctl start openvpn@server
