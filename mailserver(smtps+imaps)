@@ -1,0 +1,200 @@
+Cara konfigurasi mailserver (SMTPS + IMAPS)
+
+# sebelum mengikuti cara ini, pastikan kalian sudah memiliki domain, contoh tutor disini menggunakan domain "itnsaskills.cloud"
+# pastikan juga kalian telah memiliki ssl untuk enkripsi dan menjalankan smpts + imaps
+
+1. letakkan ssl (cert) & CA pada tempat berikut ini
+	
+	cp cacert.pem /usr/local/share/ca-certificates/cacert.crt
+	cp servercert.pem /etc/ssl/certs/servercert.pem
+	cp serverkey.pem /etc/ssl/private/serverkey.pem
+
+	# update ca-certificates
+	
+	update-ca-certificates	
+
+2. install postfix
+	
+	apt-get install postfix -y
+	# pilih "internet site"
+	# system mail name "mail.itnsaskills.cloud"
+
+3. atur main config file postfix
+
+	nano /etc/postfix/main.cf	
+
+	# atur seper ini
+	
+	smtpd_tls_cert_file = /etc/ssl/certs/servercert.pem
+	smtpd_tls_key_file = /etc/ssl/private/serverkey.pem
+	mydomain = mail.itnsaskills.cloud
+	myorigin = $myhostname
+	mydestination = itnsaskills.cloud, mail.itnsaskills.cloud, localhost
+	mynetworks = 0.0.0.0/0
+	
+	home_mailbox = Maildir/
+	
+	smtpd_sasl_type = dovecot
+	smtpd_sasl_path = private/auth
+	smtpd_sasl_auth_enable = yes
+
+4. untuk mengaktifkan port 465 (SMTPS) 
+
+	nano /etc/postfix/master.cf
+	
+	# hilangkan tanda pagar (#) pada text berikut
+	
+	submission inet n       -       -       -       -       smtpd
+	  -o syslog_name=postfix/submission
+	  -o smtpd_tls_security_level=encrypt
+
+
+5. untuk mengaktifkan port submission port 587 (optional)
+	
+	nano /etc/postfix/master.cf
+	
+	# hilangkan tanda pagar (#) pada text berikut
+	
+	smtps     inet  n       -       n       -       -       smtpd
+	  -o syslog_name=postfix/smtps
+	  -o smtpd_tls_wrappermode=yes
+
+6. restart postfix
+	
+	service postfix restart
+
+
+7. install dovecot
+ 
+	apt-get install dovecot-common dovecot-imapd
+
+8. letakkan cert dan key ditempat berikut
+	
+	cp servercert.pem /etc/dovecot/servercert.pem
+	cp serverkey.pem /etc/dovecot/private/serverkey.pem
+
+9. konfigurasi file pada dovecot (direktori ada di /etc/dovecot/conf.d)
+
+	cd /etc/dovecot/conf.d
+
+10. atur file 10-ssl.conf
+		
+	nano 10-ssl.conf
+	
+	# rubah beberapa konfig seperti ini
+	
+	ssl = yes
+	ssl_cert = </etc/dovecot/servercert.pem
+	ssl_key = </etc/dovecot/private/serverkey.pem
+
+11. atur file 10-auth.conf
+
+	#hilangkan tanda pagar (#) pada	
+
+	disable_plaintext_auth = yes
+
+12. atur file 10-master.conf
+
+	# cari dan atur barisnya menjadi dibawah ini
+	
+	# Postfix smtp-auth
+	unix_listener /var/spool/postfix/private/auth {
+		mode = 0660
+		user = postfix
+		group = postfix
+	}
+
+	service imap-login {
+  		inet_listener imap {
+   		port = 0
+ 		}
+ 	inet_listener imaps {
+   		port = 993
+    		ssl = yes
+	}
+	
+13. atur file 10-mail.conf
+
+	# hilangkan tanda pagar (#) pada text ini	
+	
+	mail_location = maildir:~/Maildir
+
+	# tambahkan tanda pagar (#) pada text ini	
+
+	mail_location = mbox:~/mail:INBOX=/var/mail/%u
+
+	# hilangkan pagar dan tambahkan konfig pada
+	
+	mail_privileged_group = mail
+
+14. restart dovecot
+
+	service dovecot restart
+
+15. membuat maildir
+
+	maildirmake.dovecot /etc/skel/Maildir
+	
+	atau
+
+	maildirmake /etc/skel/Maildir
+
+	# mengapa membuatnya di /etc/skel? mengapa tidak di folder home user langsung
+	# karena saat membuat user, otomatis user akan menload apapun yang ada di folder /etc/skel
+	# jadi akan merepotkan jika membuat Maildir pada folder user satu per satu
+
+16. buat user
+	
+	# menggunakan adduser
+	
+	adduser user1
+	
+	adduser user2
+	
+	# kita juga dapat menggunakan user dengan authentikasi seperti ldap, namun tidak akan saya jelaskan disini
+
+17. test mailserver
+	
+	# kita dapat test langsung dari terminal atau kita juga dapat test melalui mailclient
+	# disini saya akan test melalui terminal langsung
+
+	# untuk test smtps
+
+	openssl s_client -showcerts -connect mail.itnsaskills.cloud:465
+
+	# jika berhasil akan muncul certificate kalian dan kalian bisa langsung mengirim email dengan cara:
+	
+	mail from: user1 <enter>
+	rcpt to: user2 <enter>
+	data <enter>
+	ini email dari user1 <enter>
+	. <enter>
+	quit <enter>
+
+	# untuk test imaps
+	
+	openssl s_client -showcerts -connect mail.itnsaskills.cloud:993
+	
+	# jika muncul certificate kalian berarti imaps berjalan dengan baik
+
+	# cek maildir dari user2
+	
+	nano /home/user2/Maildir/new/[pesan email masuk]
+
+	# nanti akan muncul isi dari pesan yang telah kita kirim melalui user1 tadi
+
+# tambahan 
+
+14. untuk disable port 25
+
+	nano /etc/postfix/master.cf
+
+	# tambahkan tanda pagar pada baris ini
+
+	# smtp      inet  n       -       n       -       -       smtpd
+
+
+
+LINK PENTING
+https://www.akangerik.com/membuat-mail-server-di-ubuntu-14-postfix-dovecot/
+https://www.youtube.com/watch?v=WCo7dwtgprg&list=PLveMGuvxdb22JM_34U2y-oZQCmuV_84-u&index=4&t=0s
