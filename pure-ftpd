@@ -1,0 +1,110 @@
+1. install paket
+
+	apt-get install -y pure-ftpd-common pure-ftpd
+
+2. mengaktifkan pureftpd database dan mematikan PAM & Unix auth untuk mengaktifkan virtual user
+
+	ln -s /etc/pure-ftpd/conf/PureDB /etc/pure-ftpd/auth/50pure
+	
+	echo no > /etc/pure-ftpd/conf/PAMAuthentication
+	
+	echo no > /etc/pure-ftpd/conf/UnixAuthentication
+
+3. setting agar pureftpd membuat homedir saat pertama kali login
+
+	echo "yes" > /etc/pure-ftpd/conf/CreateHomeDir
+
+4. membuat semua chroot
+
+	echo "yes" > /etc/pure-ftpd/conf/ChrootEveryone
+
+	# apa gunanya? agar user terjail di foldernya sendiri, alias dia tidak bisa naik level user berikutnya. ini berfungsi saat terjadi
+	# pencurian data, sehingga tidak berimbas ke direktori lainnya
+
+	# Chroot merupakan metode root direktori (/) virtual yang akan menjadikan home direktori dari suatu user seperti root (/) di sistemnya 
+	# sendiri sehingga mencegah user tersebut dapat naik ke level direktori yang lebih tinggi dan mengambil informasi dari sistem tersebut.
+
+
+5. buat direktori untuk user (disini dikarenkan direktorinya nanti bukan di /home)
+
+	mkdir -p /files/users
+	
+	# -p disini fungsinya sama seperti chroot :v	
+
+6. membuat user & group untuk virtual user pureFTPD
+
+	# Pure-FTP dapat menangani pengguna virtual, yang berarti mereka disimpan dalam database Pure-FTPd dan tidak terkait dengan pengguna 
+	# sistem Linux.
+
+	# Agar Pure-FTPd dapat mengelola file dengan pengguna virtual, kita perlu membuat pengguna dan grup Linux di mana semua pengguna 
+	# virtual akan dikaitkan. Semua pengguna virtual dapat menggunakan pengguna sistem dan grup yang sama selama mereka telah di-chroot.
+
+	# membuat group
+		
+		groupadd ftpgroup
+	
+	# membuat pengguna (agar user ini tidak bisa login, berikan shelnya ke /etc)
+		
+		useradd -g ftpusr -d /dev/null -s /etc ftpuser
+
+7. membuat virtual user
+
+	pure-pw useradd skill39-ftp -u ftpuser -g ftpgroup -d /files/users/skill39-ftp  
+
+	# user yang kita buat itu bernama skill39-ftp dengan hak akses user/group = ftpuser/ftpgroup
+
+8. update database pureFTPD
+
+	pure-pw mkdb
+
+	# agar user diupdate pada databases pureFTPD
+
+9. check informasi user
+
+	pure-pw show [nama_user]
+	
+	# contoh:
+
+	pure-pw skill39-ftp
+
+10. ada juga script untuk membuat user dengan lebih mudah (optional, boleh diskip kok :v)
+
+	echo -e  '#!/bin/bash\nread -p "Enter UserName: " usrname\npure-pw useradd $usrname -u ftpusr -g ftpusr -d /home/FTP/$usrname && pure-pw mkdb'  > /usr/sbin/ftp-createacc
+
+	chmod u+x /usr/sbin/ftp-createacc
+
+11. konfigurasi TLS
+
+	# agar kita bisa menggunakan ftps bro
+
+	# insecure + TLS (ftp & ftps)
+	echo 1 > /etc/pure-ftpd/conf/TLS
+	
+	# atau bisa juga	
+	
+	# force TLS (Ftps doang)
+	echo 2 > /etc/pure-ftpd/conf/TLS
+
+12. buat certificate untuk enkripsi ftps
+	
+	# pastikan kalian sudah memiliki cert untuk server yang di sign oleh CA
+	# jika belum ada silahkan dibuat terlebih dahulu
+
+	# gunakan nama key dengan -> pure-ftpd.pem
+	# gunakan nama crt dengan -> pure-ftpd.pem
+
+	# setelah itu pindahkan file cert nya ke /etc/ssl/private
+
+13. setting juga passive port buat ngirim file pada ftpnya bos
+
+	echo "40110 42210" > /etc/pure-ftpd/conf/PassivePortRange
+
+14. restart service pure-ftpd
+
+	service pure-ftpd restart
+
+
+
+link penting
+
+https://www.vultr.com/docs/setup-pure-ftpd-with-tls-on-debian-9
