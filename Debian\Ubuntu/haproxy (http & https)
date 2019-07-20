@@ -1,4 +1,4 @@
-konfigurasi http htpps haproxy (dengan roundrobin)
+konfigurasi http htpps haproxy (dengan algoritma roundrobin)
 
 1. install packet
 	
@@ -57,3 +57,39 @@ konfigurasi http htpps haproxy (dengan roundrobin)
 3. restart haproxy
 	
 	service haproxy restart
+	
+	
+	
+konfigurasi haproxy yang nanti akan diredirect langsung dari server HA
+
+
+1. instal packet
+
+	apt-get install haproxy
+	
+2. konfigurasi main file haproxy
+
+	nano /etc/haproxy/haproxy.cfg
+	
+	# tambahkan konfigurasi ini dibagian paling bawah
+	
+	frontend ft_www
+		mode http
+		bind *:80
+		bind *:443 ssl crt /etc/ca/itnsa.pem
+		redirect scheme https if !{ ssl_fc }
+		default_backend bk_www
+	
+	backend bk_www
+		mode http
+		balance roundrobin
+		option forwardfor
+		server srv1 10.1.1.10:443 ssl verify none
+		server srv2 10.1.1.20:443 ssl verify none
+		
+		# tambahkan konfig dibawah jika ingin memberikan http request (OPTIONAL)
+		  # http-request set-method <fmt> [<condition>]
+		  # http-request add-header <name> <fmt> [<condition>]
+		  # http-request set-header <name> <fmt> [<condition>]
+			# contoh
+			   # http-request set-header X-Served-By %[src]
