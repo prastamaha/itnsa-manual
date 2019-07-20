@@ -93,3 +93,8 @@ konfigurasi haproxy yang nanti akan diredirect langsung dari server HA
 		  # http-request set-header <name> <fmt> [<condition>]
 			# contoh
 			   # http-request set-header X-Served-By %[src]
+
+3. restart haproxy
+	
+	service haproxy restart
+	
