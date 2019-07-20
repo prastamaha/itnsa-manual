@@ -1,0 +1,28 @@
+cara menambah http header
+
+1. buka file main config apache2 
+
+    /etc/apache2/apache2.conf
+
+    # bagian paling bawah tuliskan seperti ini
+    
+      # format config
+      
+          # <IfModule mod_headers.c>
+          #     Header set [nama header] "[value]"
+          # </IfModule>
+   
+      # contoh config
+       
+            <IfModule mod_headers.c>
+                 Header set X-Served-By "itnsaskills-srv1"
+            </IfModule>
+
+2. aktifkan module header apache2
+
+    a2enmod headers
+
+3. restart apache2
+
+    systemctl reload apache2
+    systemctl restart apache2
