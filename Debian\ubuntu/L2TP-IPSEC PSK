@@ -1,0 +1,137 @@
+cara konfigurasi vpn server L2TP/IPSEC (l2tp membuat tunnel, sedangkan ipsecurity yang mengenkripsi)
+#cara ini dengan metode PSK (Pre Shared-key)
+
+ip address server (ip public /gateway) : 172.17.1.254
+local ip (address yang diberikan untuk vpn server) : 10.2.4.1
+ip range remote (address yang diberikan untuk client) : 10.2.4.100-10.2.4.120
+
+
+1. install package xl2tpd(L2tp) dan Strongswan(IPSEC)
+
+	apt-get install xl2tpd strongswan
+
+2. konfigurasi ipsec.conf
+	
+	nano /etc/ipsec.conf
+
+	# buat file config baru di bagian paling bawah file tersebut
+
+	conn L2TP-IPSEC
+		authby=secret
+		type=transport
+		rekey=no
+		keyingtries=3
+		esp=aes128-sha1-modp2048
+		ike=aes128-sha1-modp2048
+		ikelifetime=8h
+		keylife=1h
+		left=172.17.1.254 		        # ip address server
+		leftprotoport=17/1701   
+		right=%any 			            # ini bisa diisi juga ip address public dari client
+		rightsubnet=0.0.0.0/0 		    #ini bisa juga diisi ip address local dari client
+		rightprotoport=17/%any
+		auto=add
+		dpddelay=30
+		dpdtimeout=120
+		dpdaction=clear
+		forceencaps=yes
+
+3. konfigurasi ipsec.secret
+	
+	nano /etc/ipsec.secrets
+
+	# format nya seperti: 	
+	# [ip addr server] [ip addr client] : PSK "[isi ini dengan secret]"
+
+	172.17.1.254 %any : PSK "debian9"
+
+4. konfigurasi xl2tpd.conf
+
+	nano /etc/xl2tpd/xl2tpd.conf
+
+	# edit konfigurasinya sesuaikan seperti yang dibawah ini
+
+	[global]
+	port=1701
+	auth file = /etc/ppp/chap-secrets
+	
+	[lns default]
+	ip range = 10.2.4.100-10.2.4.120 	# isi dengan ip range yang akan diberikan ke client
+	local ip = 10.2.4.1 			# isi dengan local ip vpn
+	require authentication = yes
+	name = debian9				# boleh diisi bebas, digunakan nanti untuk inisialisasi pada user
+	pass peer = yes
+	ppp debug = no
+	length bit = yes
+	refuse pap = yes
+	refuse chap = yes
+	pppoptfile = /etc/ppp/options.xl2tpd
+
+5. buat dan konfigurasi pada options.xl2tpd
+
+	nano /etc/ppp/options.xl2tpd
+	
+	# konfigurasi seperti dibawah ini
+
+	require-mschap-v2
+	refuse-mschap
+	ms-dns 10.1.1.10			# isi dengan dns yang akan diberikan ke client
+	asyncmap 0
+	auth
+	idle 1800
+	mtu 1410
+	mru 1410
+	connect-delay 5000
+	lock
+	hide-password
+	local
+	modem
+	name debian9
+	proxyarp
+	lcp-echo-interval 30
+	lcp-echo-failure 4
+
+	# semangat ngapalinnya ya hehe :v
+
+6. buat user :v
+
+	# ya buat kayak biasa aja dulu pakai adduser ada useradd, ini belum pakai auth radius atau ldap ya :V
+
+	adduser test1
+	adduser test2
+	
+	# berikan pass "test" 
+
+7. konfigurasi user dari vpn
+
+	nano /etc/ppp/chap-secrets
+	
+	# format penulisannya seperti ini
+
+	# [nama user] [nama server] [pass user] [ip address yang akan diberikan ke user]
+
+	     test1	debian9		test	   10.2.4.100	
+
+	     test2	debian9		test	   * 
+
+	# tanda "*" artinya semuanya, jadi ip yang akan diberikan bisajadi acak tergantung ip range yang telah dikonfigurasi
+	# tanda "*" juga bisa diberikan pada [nama server] 
+
+8. aktifkan nat (ini berfungsi agar client vpn terkoneksi dengan internet dimana interface keluarannya agar hanya ada 1)
+
+	iptables -t nat -A POSTROUTING -o eth0 -j MASQUARADE
+	
+	# atau
+	
+	iptables -t nat -A POSTROUTING -o eth0 -s 10.2.4.0/24 -j SNAT --to-source 172.17.1.254
+
+	# apa bedanyanya?
+
+	# sebenarnya sama aja, bedanya kalau masquarade itu akan manjadikan eth0 sebagai keluaran dari semua interface, sedangkan yang bawah itu
+	# hanya lebih spesifik ke ip yang mana
+	
+	# nanti akhirnya sama saja, dimana client vpn, akan dikenali dengan ip address server di internet (jaringan) 
+
+LINK PENTING
+https://kayama.dp.ua/blog/ubuntu-16-04-how-to-setup-l2tp-over-ipsec-vpn-serv.html
+https://linuxscriptshub.com/configure-l2tp-ipsec-vpn-ubuntu-1604/
