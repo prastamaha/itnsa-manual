@@ -1,0 +1,101 @@
+konfigurasi freeradius v3 auth ldap (disini anggapannya ldap server sudah selesai dikonfig ya)
+
+1. install package freeradius yang diperlukan
+
+	apt-get install freeradius freeradius-ldap -y
+
+2. definisikan radius untuk Auth dengan ldap
+
+	nano /etc/freeradius/3.0/sites-available/default
+
+	# cari dan hilangkan tanda pagar (#) pada baris ini  
+
+	Auth-Type {
+		ldap
+	}
+
+3. definisikan ldap server kita pada radius server
+
+	nano /etc/freeradius/3.0/mods-available/ldap
+	
+	# edit pada baris baris berikut
+	
+	server = '10.1.1.20'
+	identity = 'cn=admin,dc=itnsaskills,dc=cloud'
+	password = Skill39
+	base_dn = 'dc=itnsaskills,dc=cloud'				# ini bisa juga dibuat seperti ini 'ou=VPN,dc=itnsaskills,dc=cloud'
+									# dengan tujuan, agar user yang digunakan auth hanya dari ou VPN
+
+4. buat symbolic link antara mods-available dengan mods-enabled
+
+	# pada dasarnya mods-available merupakan module yang ada, sedangkan mods-enabled adalah modules yang aktif.
+	# agar service ldap berjalan pada radius, maka kita harus membuat symbolic link dari mods-available ke mods-enabled
+	# symbolic link itu bisa dibilang seperti shortcut, sehingga kalau ada perubahan kita hanya perlu mengubah konfigurasi di mods-available
+
+	ln -s /etc/freeradius/3.0/mods-available/ldap /etc/freeradius/3.0/mods-enabled/ldap
+
+	# lalu cek filenya, pastikan terlink dengan benar (ada isinya)
+
+	nano /etc/freeradius/3.0/mods-enabled/ldap
+
+	# jika tidak ada isinya, jika dapat copy saja filenya dengan biasa menggunakan cp
+
+	rm /etc/freeradius/3.0/mods-enabled/ldap
+
+	cp /etc/freeradius/3.0/mods-available/ldap /etc/freeradius/3.0/mods-enabled/ldap
+
+5. definisikan client dari radius
+
+	nano /etc/freeradius/3.0/clients.conf
+
+	client localhost {
+	#	ipaddr = 127.0.0.1				# ganti ip ini menggunakan ip dari server freeradius
+		ipaddr = 10.1.1.20				# contohnya seperti ini
+	}
+
+	# bisa buat seperti ini
+	# sintaknya gini
+	
+	# client (nama_client) {
+	#	ipaddr = ip/subnet (x.x.x.x/x)
+	#	secret = kayak_password_:v
+	# }
+
+	# contoh
+
+	client localhost {
+		ipaddr = 127.0.0.1
+		secret = Skill39
+	}
+
+	client internal {
+		ipaddr = 172.17.1.254
+		secret = Skill39
+	}
+
+6. restart service freeradius
+
+	service freeradius restart
+
+7. testing
+
+	# radtest [user ldap] [pass user] [ip server radius] [NAS port] [secret]
+
+	radtest user1 Skill39 10.1.1.20 1 Skill39
+
+	# jika muncul tulisan "access-accept" maka authentikasi berhasil dibuat
+
+
+LINK PENTING
+
+https://clintonmetu.com/2018/05/setting-up-freeradius-openldap-on-a-raspberry-pi-for-network-device-authentication/	
+
+	apa itu nas ?
+ 
+		nas (network access server) adalah sistem yang mengediakan akses ke jaringan. Nas bertindak sebagai pintu gerbang untuk menjaga akses ke sumber 	daya yang dilindungi (contohnya jika kita ingin authentikasi ke vpnserver).
+
+		client terhubung ke nas, lalu nas terhubung ke server AAA (freeradius) untuk menanyakan apakah kredensial yang diberikan oleh client itu valid atau 	tidak, berdasarkan jawaban dari AAA server, nas akan mengijinkan atau melarang akses ke sumber daya tersebut ke sumber daya yang dilindungi itu (dalam hal 	ini contohnya vpn server)
+
+selengkapnya di:
+
+https://wiki.freeradius.org/glossary/NAS
