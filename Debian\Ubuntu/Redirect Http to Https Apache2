@@ -1,0 +1,28 @@
+1. buka config file http
+
+      nano /etc/apache2/sites-available/000-default.conf
+
+      # edit confignya menjadi seperti berikut
+        
+              <VirtualHost *:80>
+                 ServerName www.itnsaskills.cloud
+                 DocumentRoot /var/www/html  
+                 Redirect / https://www.yourdomain.com
+              </VirtualHost>
+
+              <VirtualHost *:443>
+                 ServerName www.itnsaskills.cloud
+                 DocumentRoot /var/www/html  
+                 SSLEngine On
+                 SSLCertificateFile /etc/ca/itnsa.crt
+                 SSLCertificateKeyFile /etc/ca/itnsa.key
+              </VirtualHost>
+              
+2. aktifkan module ssl
+        
+      a2enmod ssl
+      
+3. restart apache2
+
+       systemctl reload apache2
+       systemctl restart apache2
