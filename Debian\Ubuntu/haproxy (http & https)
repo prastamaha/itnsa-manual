@@ -1,0 +1,59 @@
+konfigurasi http htpps haproxy (dengan roundrobin)
+
+1. install packet
+	
+	apt-get install haproxy
+
+2. konfigurasi main file haproxy
+
+	nano /etc/haproxy/haproxy.cfg
+
+	# tambahkan konfigurasi ini dibagian paling bawah
+	
+	# frontend dari http
+	frontend ft_http
+		mode http
+		bind :80
+		default_backend bk_http
+
+	# frontend dari https
+	frontend ft_https
+		mode tcp
+		bind :443
+		default_backend bk_https
+	
+	# backend dari http
+	backend bk_http
+		mode http
+		balance roundrobin
+		option httpclose
+		server srv1 10.1.1.10:80 check
+		server srv2 10.1.1.20:80 check
+
+
+		# tambahkan konfig dibawah jika ingin memberikan http request (OPTIONAL)
+		  # http-request set-method <fmt> [<condition>]
+		  # http-request add-header <name> <fmt> [<condition>]
+		  # http-request set-header <name> <fmt> [<condition>]
+			# contoh
+			   # http-request set-header X-Served-By %[src]
+
+	# backend dari htpps
+	backend bk_htpps
+		mode tcp
+		balance roundrobin
+		option httpclose
+		server srv1 10.1.1.10:443 check
+		server srv2 10.1.1.20:443 check
+
+
+		# tambahkan konfig dibawah jika ingin memberikan http request (OPTIONAL)
+		  # http-request set-method <fmt> [<condition>]
+		  # http-request add-header <name> <fmt> [<condition>]
+		  # http-request set-header <name> <fmt> [<condition>]
+			# contoh
+			   # http-request set-header X-Served-By %[src]
+
+3. restart haproxy
+	
+	service haproxy restart
