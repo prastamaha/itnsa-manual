@@ -1,0 +1,102 @@
+konfigurasi openvpn site to site
+
+# topologi
+
+	(net1)--SRV1--(ex1)-------------------(ex2)--SRV2--(net2)
+
+	# net1 = 10.1.1.254/24
+	# net2 = 10.2.2.254/24
+	# ex1 = 172.17.1.253
+	# ex2 = 172.17.1.254
+
+setelah memahami topologi sederhana diatas, lanjut ke konfigurasinya
+
+1. install packet (lalukan di kedua server)
+
+	apt-get install openvpn openssl -y
+
+2. membuat vpn key for auth
+
+	# lakukan di SRV1
+
+	openvpn --genkey --secret /etc/openvpn/vpn.key
+
+	# copy key tersebut ke SRV2 (lakukan di SRV1)
+
+	scp /etc/openvpn/vpn.key root@172.17.1.254:/etc/openvpn
+	
+3. membuat file main config
+
+	# pada SRV1
+
+	nano /etc/openvpn/server1.conf			# penamaan file konfigurasi bebas
+	
+		# lalu tambahkan konfig dibawah
+
+		remote 172.17.1.254			# external ip dari SRV2
+		float
+		port 1194				# port yang ingin digunakan (bisa diubah)
+		dev tun					
+		ifconfig 10.0.0.1 10.0.0.2		# untuk memberikan tunnel ip, 10.0.0.1 untuk SRV1 & 10.0.0.2 untuk SRV2
+		persist-tun
+		persist-local-ip
+		comp-lzo
+		ping 15
+		secret /etc/openvpn/vpn.key		# arahkan ke loksi dari vpn key
+		route 10.2.2.0 255.255.255.0		# untuk membuat routing, agar network 10.2.2.0 dapat dikenali
+		user nobody
+		group nogroup
+
+	# pada SRV2
+
+	nano /etc/openvpn/server2.conf			# penamaan file konfigurasi bebas
+
+		# lalu tambahkan konfig dibawah
+
+		remote 172.17.1.253			# external ip dari SRV1
+		float
+		port 1194				# port yang ingin digunakan (bisa diubah)
+		dev tun					
+		ifconfig 10.0.0.2 10.0.0.1		# untuk memberikan tunnel ip, 10.0.0.2 untuk SRV2 & 10.0.0.1 untuk SRV1
+		persist-tun
+		persist-local-ip
+		comp-lzo
+		ping 15
+		secret /etc/openvpn/vpn.key		# arahkan ke loksi dari vpn key
+		route 10.1.1.0 255.255.255.0		# untuk membuat routing, agar network 10.1.1.0 dapat dikenali
+		user nobody
+		group nogroup
+
+
+4. load setiap main konfig file tersebut
+
+	# SRV1
+
+		openvpn --config /etc/openvpn/server1.conf
+
+	# SRV2
+
+		openvpn --config /etc/openvpn/server2.conf
+
+	
+	# nanti akan keluar log bahwa file konfig sedang di load 
+	# kata kunci: jika ada log "TUN/TAP device tun opened" berarti proses load telah berhasil
+	# keluar dengan kombinasi "ctrl+c"
+
+5. cek interface
+
+	# pada setiap server jalankan perintah dibawah
+
+	ip a
+
+	# jika muncul interface tun0, berarti openvpn site to site berhasil dibuat
+
+6. test ping
+
+	# SRV1
+	
+	ping 10.2.2.254			# pastikan hasilnya reply
+
+	# SRV2
+	
+	ping 10.1.1.254			# pastikan hasilnya reply
