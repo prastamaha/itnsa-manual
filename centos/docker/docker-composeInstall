@@ -1,10 +1,10 @@
-1. download package in github.com to /usr/local/bin
+1. install package
 
-    sudo curl -L "https://github.com/docker/compose/releases/download/1.23.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    sudo yum -y install python-pip
 
-2. beri permission execute
+2. install docker-compose
 
-    sudo chmod +x /usr/local/bin/docker-compose
+    sudo pip install docker-compose
 
 3. cek versi 
 
