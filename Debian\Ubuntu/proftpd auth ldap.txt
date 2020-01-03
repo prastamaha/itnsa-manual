@@ -1,0 +1,89 @@
+cara konfigurasi proftp auth ldap
+
+1. install paket
+
+	apt-get install proftpd proftpd-auth-ldap
+
+2. konfigurasi file main configuration proftpd 
+
+	nano /etc/proftpd/proftpd.conf
+
+	# hilangkan tanda pagar pada baris berikut
+
+	DefaultRoot		~
+	Include /etc/proftpd/ldap.conf
+	Include /etc/proftpd/tls.conf
+		
+3. mengatur tls agar dapat menggunakan ftpes://
+
+	nano /etc/proftpd/tls.conf
+
+	# hilangkan tanda pagar pada baris berikut
+
+	TLSEngine on
+	TLSRSACertificateFile			/etc/ca/itnsa.crt
+	TLSRSACertificateKeyFile		/etc/ca/itnsa.key
+
+4. konfigurasi file ldap
+
+	nano /etc/proftpd/ldap.conf
+	
+	# ubah konfigurasinya menjadi seperti berikut
+
+	<IfModule mod_ldap.so>
+	
+	LDAPServer ldap://10.1.1.20:389
+	LDAPBindDN "cn=admin,dc=itnsaskills,dc=cloud" "Skill39"			# format >> "ldap bind user" "bind password"	
+	LDAPUsers "cn=%u,ou=MISC,dc=itnsaskills,dc=cloud"			# sesuaikan "cn=%u" ini dengan user di ldap kamu, misalkan di "dn" user nya menggunakan uid,
+										# maka ubah cn=%u menjadi uid=%u. sesuaikan juga dengan ou yang akan digunakan
+	
+	CreateHome on 755							# ketiga perintah ini digunakan untuk membuat homedir saat ftp user pertama kali login,
+	LDAPGerateHomedir on 775						# dimana home dir tersebut akan di beri permission 775
+	LDAPForceGeneratedHomedir on 775					#
+	LDAPGenerateHomedirPrefix /home						# sesuaikan dengan home direktory untuk ftp 
+
+	</IfModule>
+
+	# NOTE PENTING!!!
+
+	# agar authentikasi dengan ldap ini berjalan dengan lancar, jangan menginstall ldap client (libpam-ldap, libnss-ldap) di server ftp ini, agar authentikasi tidak dilakukan
+	# melalui ldap client tersebut.
+
+
+5. konfigurasi agar user dapat login hanya dalam satu sesi
+
+	nano /etc/proftpd/proftpd.conf
+
+	# tambahkan baris berikut
+
+	MaxClients		30
+	MaxInstances		30
+	MaxClientsPerUser	1
+	MaxHostsPerUser		1
+	MaxClientsPerHost	1
+	MaxLoginAttempts	1
+
+6. konfigurasi agar user tidak dapat rename file
+
+		
+	nano /etc/proftpd/proftpd.conf
+	
+	# tambahkan baris berikut
+
+	<Directory /*>
+		<Limit RNFR>
+			DenyAll
+		</Limit>
+	</Directory>
+
+	# kalian juga bisa menambahkan limit yang lain, seperti DELE (agar user tidak dapat delete file)
+	# dan masih banyak lagi, dilahkan di cari cari hehe :v
+
+7. restart service
+
+	service proftpd restart
+
+LINK PENTING
+		
+# service lengkap dari proftpd ada disini
+http://www.proftpd.org/docs/directives/configuration_full.html

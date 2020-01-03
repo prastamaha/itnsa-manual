@@ -1,0 +1,72 @@
+# SOAL
+
+Firewall
+Use iptables as firewall backend.
+Default policy for the INPUT & FORWARD chains through the firewall should be DROP.
+Make sure that firewall operates in stateful mode.
+Configure DNAT for DNS, HTTP, HTTPS, to lksjateng-lb using IP external of lksjateng-cloud-edge.
+Configure DNAT for IMAPS (TCP 993) and SMTPS (TCP 465) to lksjateng-srv1 using IP external of lksjateng-cloud-edge.
+Configure INPUT chain to allow ICMP, DNS, HTTPS, IMAPS (TCP 993), SMTPS (TCP 465), LDAP, RADIUS, VPN traffic.
+Configure FORWARD chain to allow the following traffic from any network to the IP of lksjateng-lb & lksjateng-srv1 :
+ICMP
+DNS
+HTTPS
+IMAPS
+SMTPS
+LDAP
+RADIUS
+All other traffic should be prohibited
+
+
+# KONFIG
+
+# Default policy for the INPUT & FORWARD chains through the firewall should be DROP.
+iptables -P INPUT DROP
+iptables -P FORWARD DROP
+
+# Make sure that firewall operates in stateful mode.
+iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables -A INPUT -m state --state INVALID -j DROP
+iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables -A FORWARD -m state --state INVALID -j DROP
+
+# Configure DNAT for DNS, HTTP, HTTPS, to lksjateng-lb using IP external of lksjateng-cloud-edge.
+iptables -t nat -A PREROUTING -p udp -d 172.17.1.253 --dport 53 -j DNAT --to-destination 10.1.1.10:53
+iptables -t nat -A PREROUTING -p tcp -d 172.17.1.253 --dport 80 -j DNAT --to-destination 10.1.1.10:80
+iptables -t nat -A PREROUTING -p tcp -d 172.17.1.253 --dport 443 -j DNAT --to-destination 10.1.1.10:443
+
+# Configure DNAT for IMAPS (TCP 993) and SMTPS (TCP 465) to lksjateng-srv1 using IP external of lksjateng-cloud-edge.
+iptables -t nat -A PREROUTING -p tcp -d 172.17.1.253 --dport 993 -j DNAT --to-destination 10.1.1.20:993
+iptables -t nat -A PREROUTING -p tcp -d 172.17.1.253 --dport 465 -j DNAT --to-destination 10.1.1.20:465
+
+# Configure INPUT chain to allow ICMP, DNS, HTTPS, IMAPS (TCP 993), SMTPS (TCP 465), LDAP, RADIUS, VPN traffic.
+iptables -A INPUT -p icmp -j ACCEPT
+iptables -A INPUT -p udp --dport 53 -j ACCEPT
+iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+iptables -A INPUT -p tcp --dport 993 -j ACCEPT
+iptables -A INPUT -p tcp --dport 465 -j ACCEPT
+iptables -A INPUT -p tcp --dport 389 -j ACCEPT
+iptables -A INPUT -p tcp -m multiport --dports 1812,1813 -j ACCEPT
+iptables -A INPUT -p udp -m multiport --dports 1812,1813 -j ACCEPT
+iptables -A INPUT -p udp --dport 1194 -j ACCEPT
+
+# Configure FORWARD chain to allow the following traffic from any network to the IP of lksjateng-lb & lksjateng-srv1
+iptables -A FORWARD -p icmp -d 10.1.1.10,10.1.1.20 -j ACCEPT
+iptables -A FORWARD -p udp --dport 53 -d 10.1.1.10,10.1.1.20 -j ACCEPT
+iptables -A FORWARD -p tcp --dport 443 -d 10.1.1.10,10.1.1.20 -j ACCEPT
+iptables -A FORWARD -p tcp --dport 993 -d 10.1.1.10,10.1.1.20 -j ACCEPT
+iptables -A FORWARD -p tcp --dport 465 -d 10.1.1.10,10.1.1.20 -j ACCEPT
+iptables -A FORWARD -p tcp --dport 389 -d 10.1.1.10,10.1.1.20 -j ACCEPT
+iptables -A FORWARD -p tcp -m multiport --dports 1812,1813 -d 10.1.1.10,10.1.1.20 -j ACCEPT
+iptables -A FORWARD -p udp -m multiport --dports 1812,1813 -d 10.1.1.10,10.1.1.20 -j ACCEPT
+
+All other traffic should be prohibited
+iptables -A INPUT -J DROP
+iptables -A FORWARD -j DROP
+
+
+
+
+
+
+
