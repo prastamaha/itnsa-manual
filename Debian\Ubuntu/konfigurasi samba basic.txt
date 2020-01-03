@@ -1,0 +1,69 @@
+konfigurasi samba basic
+
+port samba -> tcp 139 & 445
+	      udp 137 & 138
+
+1. install packet
+
+	apt-get install samba
+
+2. buat group dan user 
+
+	# buat group untuk mengakses share folder yang nanti akan dibuat
+	# groupadd [namagroup]
+
+	groupadd sambagroup
+
+	# buat user untuk authentikasi ke folder samba, bisa buat lebih dari 1 (disini contoh cuma buat 1)
+
+	useradd sambauser			# pakai useradd agar tidak buat home direktory hehe
+
+	# masukan user ke dalam group yang tadi dibuat
+	# usermod -a -G [namagroup] [namauser]
+
+	usermod -a -G sambagroup sambauser
+
+3. buat direktory yang akan dijadikan share path nantinya
+
+	mkdir /files/samba/private
+	mkdir /files/samba/public
+
+	# ubah kepemilikan dengan chown (berikan ke sambauser)
+	
+	chown sambauser:sambagroup /files/samba/private
+	chown sambauser:sambagroup /files/samba/public
+
+	# berikan permission ke dalam folder tersebut agar user dengan group yang sama bisa (write & read) sedangkan user lain hanya read
+
+	chmod -R 775 /files/samba/private
+	chmod -R 775 /files/samba/public
+
+4. buat share folder
+
+	nano /etc/samba/smb.conf
+
+	# pada bagian paling bawah, buat share folder baru dengan cara seperti ini
+
+	[private]				# ini nama folder yang akan di share nanti
+	path = /files/samba/private		# letak folder yang akan di share
+	browseable = no				# agar folder share disembunyikan, jadi nanti akses dengan "smb://[domain]/[namafolder]"
+	writable = yes				# agar folder dapat di write
+	guest ok = no				# agar ada authentikasi saat ingin mengakses folder
+	create mask = 0775			# agar setiap file yang dibuat di share folder ini diset permissionnya dengan 0775
+	directory mask = 0775			# agar setiap dir yang dibuat di share folder ini diset permissionnya dengan 0775
+	valid user = @sambagroup		# agar yang dapat authentikasi hanya user yang ada di sambagroup
+
+	# bisa juga kita tambahkan seperti ini, untuk mendefinisikan user yang mendapat akses write atau read
+
+	write list = [kalau user langsung tulis nama usernya, kalau group gunakan tanda '@{namagroup}']
+	read list = [sama seperti diatas]
+
+	# buat untuk direktory yang public
+
+	[public]
+	path = /files/samba/public
+	browseable = yes			# agar bisa dilihat langsung saat masuk ke smb://[domain]
+	writeable = yes
+	guest ok = yes
+	public = yes
+
