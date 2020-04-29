@@ -1,8 +1,11 @@
-# prasta
+# Itnsa Manual
 
-ini adalah tempat saya untuk sharing tutorial server admin
+konfigurasi ini didasari oleh soal lksn2019 `module D` (Linux Environment)
 
-jika ada yang kurang jelas bisa ditanyakan di telegram dengan id
-@prastamaha
+### soal 
+- [itnsa.id](http://itnsa.id/)
+- [https://github.com/prastamaha/itnsa-lksn2019](https://github.com/prastamaha/itnsa-lksn2019)
 
-Thank you..
+### konfigurasi dan penjelasan
+- [apache basic auth](configurations/apache_basic_auth.md)
+- [haproxy (http & https)](configurations/haproxy.md)
